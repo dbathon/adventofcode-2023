@@ -1,0 +1,46 @@
+{
+  "name": "aoc-2022",
+  "version": "1.0.0",
+  "author": "dbathon",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "a01": "node -r esbuild-register src/a01.ts",
+    "a02": "node -r esbuild-register src/a02.ts",
+    "a03": "node -r esbuild-register src/a03.ts",
+    "a04": "node -r esbuild-register src/a04.ts",
+    "a05": "node -r esbuild-register src/a05.ts",
+    "a06": "node -r esbuild-register src/a06.ts",
+    "a07": "node -r esbuild-register src/a07.ts",
+    "a08": "node -r esbuild-register src/a08.ts",
+    "a09": "node -r esbuild-register src/a09.ts",
+    "a10": "node -r esbuild-register src/a10.ts",
+    "a11": "node -r esbuild-register src/a11.ts",
+    "a12": "node -r esbuild-register src/a12.ts",
+    "a13": "node -r esbuild-register src/a13.ts",
+    "a14": "node -r esbuild-register src/a14.ts",
+    "a15": "node -r esbuild-register src/a15.ts",
+    "a16": "node -r esbuild-register src/a16.ts",
+    "a17": "node -r esbuild-register src/a17.ts",
+    "a18": "node -r esbuild-register src/a18.ts",
+    "a19": "node -r esbuild-register src/a19.ts",
+    "a20": "node -r esbuild-register src/a20.ts",
+    "a21": "node -r esbuild-register src/a21.ts",
+    "a22": "node -r esbuild-register src/a22.ts",
+    "a23": "node -r esbuild-register src/a23.ts",
+    "a24": "node -r esbuild-register src/a24.ts",
+    "a25": "node -r esbuild-register src/a25.ts",
+    "all": "node -r esbuild-register src/runAll.ts",
+    "check": "tsc --noEmit",
+    "prettier": "prettier --write ."
+  },
+  "dependencies": {
+    "@types/node": "^16.11.11"
+  },
+  "devDependencies": {
+    "esbuild": "^0.12.29",
+    "esbuild-register": "^3.4.1",
+    "prettier": "^2.8.0",
+    "typescript": "^4.9.3"
+  }
+}
