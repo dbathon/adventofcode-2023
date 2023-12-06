@@ -8,6 +8,16 @@ export function readLines(path: string, trim = true, omitEmpty = true) {
     .filter((line) => !omitEmpty || line.length > 0);
 }
 
+export function parseInts(
+  input: string,
+  splitter: { [Symbol.split](string: string, limit?: number): string[] } = / +/
+): number[] {
+  return input
+    .trim()
+    .split(splitter)
+    .map((s) => parseInt(s));
+}
+
 export function sum(numbers: number[]) {
   return numbers.reduce((a, b) => a + b, 0);
 }
