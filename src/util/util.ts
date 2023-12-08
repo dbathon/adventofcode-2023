@@ -54,6 +54,14 @@ export function findMax<T>(
   return { max, maxElement };
 }
 
+export function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
+}
+
+export function lcm(a: number, b: number) {
+  return (a / gcd(a, b)) * b;
+}
+
 export function intersection<T>(setA: Set<T>, setB: Set<T>): Set<T> {
   let intersection: Set<T> = new Set();
   for (let elem of setB) {
