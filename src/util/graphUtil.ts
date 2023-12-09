@@ -5,7 +5,11 @@ export interface Node {
 }
 
 export class Neighbor<N extends Node | string, State> {
-  constructor(readonly node: N, readonly distance: number, readonly state: State) {}
+  constructor(
+    readonly node: N,
+    readonly distance: number,
+    readonly state: State
+  ) {}
 }
 
 export function dijkstraSearch<N extends Node | string, State>(
@@ -14,7 +18,11 @@ export function dijkstraSearch<N extends Node | string, State>(
   initialState: State
 ): void {
   class QueueEntry {
-    constructor(readonly node: N, readonly state: State, readonly distance: number) {}
+    constructor(
+      readonly node: N,
+      readonly state: State,
+      readonly distance: number
+    ) {}
   }
 
   function getNodeKey<N extends Node | string>(node: N) {

@@ -1,5 +1,8 @@
 export class Node {
-  constructor(readonly ruleName: string, readonly children: (string | Node)[]) {}
+  constructor(
+    readonly ruleName: string,
+    readonly children: (string | Node)[]
+  ) {}
 
   toString(): string {
     return this.children.map((child) => child.toString()).join("");
@@ -23,7 +26,10 @@ export class Rule {
 }
 
 class PartialResult {
-  constructor(readonly nodes: (Node | string)[], readonly remaining: string) {}
+  constructor(
+    readonly nodes: (Node | string)[],
+    readonly remaining: string
+  ) {}
 }
 
 class Possibility {

@@ -1,7 +1,11 @@
 import { Node } from "./graphUtil";
 
 export class Map2DNode<T> implements Node {
-  constructor(readonly map: Map2D<T>, readonly x: number, readonly y: number) {}
+  constructor(
+    readonly map: Map2D<T>,
+    readonly x: number,
+    readonly y: number
+  ) {}
 
   get value(): T | undefined {
     return this.map.get(this.x, this.y);

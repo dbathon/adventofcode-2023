@@ -5,7 +5,10 @@ const lines = readLines("input/a02.txt");
 type Subset = Record<string, number>;
 
 class Game {
-  constructor(readonly id: number, readonly subsets: Subset[]) {}
+  constructor(
+    readonly id: number,
+    readonly subsets: Subset[]
+  ) {}
 }
 
 const games: Game[] = lines.map((line) => {
