@@ -46,6 +46,16 @@ export class Map2DNode<T> implements Node {
  * A 2D map of T elements around (0,0). It grows as needed in all directions (but is not sparse).
  */
 export class Map2D<T> {
+  static fromLines<T>(lines: string[], mapper: (c: string) => T | undefined): Map2D<T> {
+    const result = new Map2D<T>();
+    lines.forEach((line, y) => {
+      line.split("").forEach((c, x) => {
+        result.set(x, y, mapper(c));
+      });
+    });
+    return result;
+  }
+
   private data: (T | undefined)[] = [];
   // internalDim is always greater or equal to seenWidth and seenHeight
   private internalDim = 1;
@@ -71,6 +81,15 @@ export class Map2D<T> {
 
   get height(): number {
     return this.writtenHeight;
+  }
+
+  rotateRight(): Map2D<T> {
+    const result = new Map2D<T>();
+    const maxY = this.originY + this.height - 1;
+    this.forEach((x, y, v) => {
+      result.set(maxY - y, x, v);
+    });
+    return result;
   }
 
   private getIndex(x: number, y: number, grow = false): number | undefined {
