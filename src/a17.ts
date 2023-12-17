@@ -1,4 +1,4 @@
-import { Neighbor, Node, dijkstraSearch } from "./util/graphUtil";
+import { Node, dijkstraSearch } from "./util/graphUtil";
 import { Map2D, Map2DNode } from "./util/map2D";
 import { p, readLines } from "./util/util";
 
@@ -36,14 +36,13 @@ function getMinHeatLoss(minStepsOneDirection: number, maxStepsOneDirection: numb
   let heatLoss = -1;
 
   dijkstraSearch(
-    (state: NodeWithState, distance) => {
+    (state, distance, produceNode) => {
       const node = state.node;
       if (node.x === goalX && node.y === goalY && state.lastDirectionCount >= minStepsOneDirection) {
         heatLoss = distance;
-        return null;
+        return true;
       }
       const possibleDirections = POSSIBLE_DIRECTIONS[state.lastDirection ?? 1];
-      const result: Neighbor<NodeWithState>[] = [];
       for (let direction = 0; direction < NEIGHBOR_FUNCTIONS.length; direction++) {
         if (
           state.lastDirection === undefined ||
@@ -53,20 +52,13 @@ function getMinHeatLoss(minStepsOneDirection: number, maxStepsOneDirection: numb
         ) {
           const next = NEIGHBOR_FUNCTIONS[direction](node);
           if (next.value !== undefined) {
-            result.push(
-              new Neighbor(
-                new NodeWithState(
-                  next,
-                  direction,
-                  direction === state.lastDirection ? state.lastDirectionCount + 1 : 1
-                ),
-                next.value
-              )
+            produceNode(
+              new NodeWithState(next, direction, direction === state.lastDirection ? state.lastDirectionCount + 1 : 1),
+              next.value
             );
           }
         }
       }
-      return result;
     },
     new NodeWithState(map.getNode(0, 0), undefined, 0)
   );

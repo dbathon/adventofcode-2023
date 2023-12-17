@@ -4,22 +4,14 @@ export interface Node {
   nodeKey: any;
 }
 
-export class Neighbor<N extends Node | string> {
-  constructor(
-    readonly node: N,
-    readonly distance: number
-  ) {}
-}
-
 export function dijkstraSearch<N extends Node | string>(
-  getNeighbors: (node: N, distance: number) => Neighbor<N>[] | null,
+  produceNodes: (node: N, distance: number, produceNode: (node: N, distance: number) => void) => boolean | void,
   start: N
 ): void {
-  class QueueEntry {
-    constructor(
-      readonly node: N,
-      readonly distance: number
-    ) {}
+  interface QueueEntry {
+    readonly node: N;
+    readonly nodeKey: any;
+    readonly distance: number;
   }
 
   function getNodeKey<N extends Node | string>(node: N) {
@@ -27,28 +19,25 @@ export function dijkstraSearch<N extends Node | string>(
   }
 
   const queue = new Heap<QueueEntry>((a, b) => a.distance < b.distance);
-  queue.insert(new QueueEntry(start, 0));
+  queue.insert({ node: start, nodeKey: getNodeKey(start), distance: 0 });
 
   const seen: Set<any> = new Set();
 
   while (queue.size > 0) {
-    const entry = queue.remove();
+    const { node, nodeKey, distance: oldDistance } = queue.remove();
 
-    const node = entry.node;
-    const nodeKey = getNodeKey(node);
     if (!seen.has(nodeKey)) {
       seen.add(nodeKey);
 
-      const neighbors = getNeighbors(node, entry.distance);
-      if (neighbors === null) {
-        return;
-      }
-
-      neighbors.forEach((info) => {
-        if (!seen.has(getNodeKey(info.node))) {
-          queue.insert(new QueueEntry(info.node, entry.distance + info.distance));
+      const abort = produceNodes(node, oldDistance, (node, distance) => {
+        const newNodeKey = getNodeKey(node);
+        if (!seen.has(newNodeKey)) {
+          queue.insert({ node, nodeKey: newNodeKey, distance: oldDistance + distance });
         }
       });
+      if (abort) {
+        return;
+      }
     }
   }
 }

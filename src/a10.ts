@@ -1,4 +1,4 @@
-import { Neighbor, dijkstraSearch } from "./util/graphUtil";
+import { dijkstraSearch } from "./util/graphUtil";
 import { Map2D, Map2DNode } from "./util/map2D";
 import { p, readLines } from "./util/util";
 
@@ -57,15 +57,14 @@ let maxDistance = 0;
 const filteredMap = new Map2D<number>();
 
 // dijkstra is kind of overkill, but it works :)
-dijkstraSearch((node, distance) => {
+dijkstraSearch((node, distance, produceNode) => {
   maxDistance = distance;
   filteredMap.set(node.x, node.y, node.value);
-  return directionToNeighborFunction.flatMap(([direction, neighborFunction]) => {
+  directionToNeighborFunction.forEach(([direction, neighborFunction]) => {
     const neighbor = neighborFunction(node);
     if ((node.value ?? 0) & direction && (neighbor.value ?? 0) & opposite(direction)) {
-      return [new Neighbor(neighbor, 1)];
+      produceNode(neighbor, 1);
     }
-    return [];
   });
 }, start);
 
