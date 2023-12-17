@@ -57,21 +57,17 @@ let maxDistance = 0;
 const filteredMap = new Map2D<number>();
 
 // dijkstra is kind of overkill, but it works :)
-dijkstraSearch(
-  (node, _, distance) => {
-    maxDistance = distance;
-    filteredMap.set(node.x, node.y, node.value);
-    return directionToNeighborFunction.flatMap(([direction, neighborFunction]) => {
-      const neighbor = neighborFunction(node);
-      if ((node.value ?? 0) & direction && (neighbor.value ?? 0) & opposite(direction)) {
-        return [new Neighbor(neighbor, 1, 0)];
-      }
-      return [];
-    });
-  },
-  start,
-  0
-);
+dijkstraSearch((node, distance) => {
+  maxDistance = distance;
+  filteredMap.set(node.x, node.y, node.value);
+  return directionToNeighborFunction.flatMap(([direction, neighborFunction]) => {
+    const neighbor = neighborFunction(node);
+    if ((node.value ?? 0) & direction && (neighbor.value ?? 0) & opposite(direction)) {
+      return [new Neighbor(neighbor, 1)];
+    }
+    return [];
+  });
+}, start);
 
 p(maxDistance);
 

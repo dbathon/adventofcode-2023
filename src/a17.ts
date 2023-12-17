@@ -36,14 +36,14 @@ function getMinHeatLoss(minStepsOneDirection: number, maxStepsOneDirection: numb
   let heatLoss = -1;
 
   dijkstraSearch(
-    (state: NodeWithState, _, distance) => {
+    (state: NodeWithState, distance) => {
       const node = state.node;
       if (node.x === goalX && node.y === goalY && state.lastDirectionCount >= minStepsOneDirection) {
         heatLoss = distance;
         return null;
       }
       const possibleDirections = POSSIBLE_DIRECTIONS[state.lastDirection ?? 1];
-      const result: Neighbor<NodeWithState, number>[] = [];
+      const result: Neighbor<NodeWithState>[] = [];
       for (let direction = 0; direction < NEIGHBOR_FUNCTIONS.length; direction++) {
         if (
           state.lastDirection === undefined ||
@@ -60,8 +60,7 @@ function getMinHeatLoss(minStepsOneDirection: number, maxStepsOneDirection: numb
                   direction,
                   direction === state.lastDirection ? state.lastDirectionCount + 1 : 1
                 ),
-                next.value,
-                0
+                next.value
               )
             );
           }
@@ -69,8 +68,7 @@ function getMinHeatLoss(minStepsOneDirection: number, maxStepsOneDirection: numb
       }
       return result;
     },
-    new NodeWithState(map.getNode(0, 0), undefined, 0),
-    0
+    new NodeWithState(map.getNode(0, 0), undefined, 0)
   );
 
   return heatLoss;

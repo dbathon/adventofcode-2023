@@ -4,23 +4,20 @@ export interface Node {
   nodeKey: any;
 }
 
-export class Neighbor<N extends Node | string, State> {
+export class Neighbor<N extends Node | string> {
   constructor(
     readonly node: N,
-    readonly distance: number,
-    readonly state: State
+    readonly distance: number
   ) {}
 }
 
-export function dijkstraSearch<N extends Node | string, State>(
-  getNeighbors: (node: N, state: State, distance: number) => Neighbor<N, State>[] | null,
-  start: N,
-  initialState: State
+export function dijkstraSearch<N extends Node | string>(
+  getNeighbors: (node: N, distance: number) => Neighbor<N>[] | null,
+  start: N
 ): void {
   class QueueEntry {
     constructor(
       readonly node: N,
-      readonly state: State,
       readonly distance: number
     ) {}
   }
@@ -30,7 +27,7 @@ export function dijkstraSearch<N extends Node | string, State>(
   }
 
   const queue = new Heap<QueueEntry>((a, b) => a.distance < b.distance);
-  queue.insert(new QueueEntry(start, initialState, 0));
+  queue.insert(new QueueEntry(start, 0));
 
   const seen: Set<any> = new Set();
 
@@ -42,14 +39,14 @@ export function dijkstraSearch<N extends Node | string, State>(
     if (!seen.has(nodeKey)) {
       seen.add(nodeKey);
 
-      const neighbors = getNeighbors(node, entry.state, entry.distance);
+      const neighbors = getNeighbors(node, entry.distance);
       if (neighbors === null) {
         return;
       }
 
       neighbors.forEach((info) => {
         if (!seen.has(getNodeKey(info.node))) {
-          queue.insert(new QueueEntry(info.node, info.state, entry.distance + info.distance));
+          queue.insert(new QueueEntry(info.node, entry.distance + info.distance));
         }
       });
     }
