@@ -1,4 +1,3 @@
-import { Node, dijkstraSearch } from "./util/graphUtil";
 import { Map2D, Map2DNode } from "./util/map2D";
 import { p, readLines } from "./util/util";
 
@@ -30,43 +29,107 @@ const DIRECTION_TO_NEIGHBOR_FUNCTIONS: [number, (node: Map2DNode<string>) => Map
 
 const map = Map2D.fromLines(lines, (c) => c);
 
-class NodeWithState implements Node {
-  readonly nodeKey: string;
-  constructor(
-    readonly node: Map2DNode<string>,
-    readonly prevDirection: number,
-    readonly seenForks: Set<string>
-  ) {
-    this.nodeKey = node.nodeKey + ";" + prevDirection + ";" + [...seenForks].sort().join(";");
-  }
+interface Edge {
+  node: string;
+  distance: number;
 }
 
-let max = 0;
+function buildGraph(map: Map2D<string>): Record<string, Edge[]> {
+  const goalY = map.height - 1;
+  const graph: Record<string, Edge[]> = {};
+  const nodeQueue = [map.getNode(1, 0)];
 
-dijkstraSearch(
-  (state, distance, produceNode) => {
-    const node = state.node;
-    if (node.y === map.height - 1) {
-      max = distance;
-      return;
-    }
-    const coord = node.nodeKey;
-    if (state.seenForks.has(coord)) {
-      return;
-    }
+  function getPossibilities(
+    node: Map2DNode<string>,
+    forbiddenDirection: number
+  ): [number, (node: Map2DNode<string>) => Map2DNode<string>][] {
     const directions = TILE_DIRECTIONS[node.value ?? ""];
-    if (directions) {
-      const possibilities = DIRECTION_TO_NEIGHBOR_FUNCTIONS.filter(
-        ([direction, fn]) =>
-          direction !== opposite(state.prevDirection) && direction & directions && TILE_DIRECTIONS[fn(node).value ?? ""]
-      );
-      const newSeenForks = possibilities.length <= 1 ? state.seenForks : new Set([coord, ...state.seenForks]);
-      for (const [direction, fn] of possibilities) {
-        produceNode(new NodeWithState(fn(node), direction, newSeenForks), 1);
+    if (!directions) {
+      return [];
+    }
+    return DIRECTION_TO_NEIGHBOR_FUNCTIONS.filter(
+      ([direction, fn]) =>
+        direction !== forbiddenDirection && direction & directions && TILE_DIRECTIONS[fn(node).value ?? ""]
+    );
+  }
+
+  while (nodeQueue.length) {
+    const node = nodeQueue.shift()!;
+    const nodeKey = node.nodeKey;
+
+    const initialPossibilities = getPossibilities(node, 0);
+    outer: for (const [direction, fn] of initialPossibilities) {
+      // walk until there are multiple options again or the goal is reached
+      let distance = 1;
+      let lastNode = fn(node);
+      let lastDirection = direction;
+      while (true) {
+        if (lastNode.y === goalY) {
+          (graph[nodeKey] ||= []).push({ node: "goal", distance });
+          continue outer;
+        }
+        const possibilities = getPossibilities(lastNode, opposite(lastDirection));
+        if (possibilities.length === 0) {
+          // dead end
+          continue outer;
+        } else if (possibilities.length === 1) {
+          const [direction, fn] = possibilities[0];
+          lastNode = fn(lastNode);
+          lastDirection = direction;
+          ++distance;
+        } else {
+          break;
+        }
+      }
+
+      const lastNodeKey = lastNode.nodeKey;
+      (graph[nodeKey] ||= []).push({ node: lastNodeKey, distance });
+      if (!graph[lastNodeKey]) {
+        graph[lastNodeKey] = [];
+        nodeQueue.push(lastNode);
       }
     }
-  },
-  new NodeWithState(map.getNode(1, 0), SOUTH, new Set())
-);
+  }
 
-p(max);
+  return graph;
+}
+
+function findLongestHike(map: Map2D<string>): number {
+  const graph = buildGraph(map);
+  const seen = new Set<string>();
+  let max = 0;
+
+  // recursive depth first search
+  function search(node: string, distance: number) {
+    if (seen.has(node)) {
+      return;
+    }
+    if (node === "goal") {
+      if (distance > max) {
+        max = distance;
+      }
+      return;
+    }
+    const edges = graph[node];
+    if (edges) {
+      seen.add(node);
+      edges.forEach((edge) => {
+        search(edge.node, distance + edge.distance);
+      });
+      seen.delete(node);
+    }
+  }
+
+  search("1;0", 0);
+  return max;
+}
+
+p(findLongestHike(map));
+
+map.forEachNode((node) => {
+  if (TILE_DIRECTIONS[node.value ?? ""]) {
+    node.value = ".";
+  }
+});
+
+p(findLongestHike(map));
