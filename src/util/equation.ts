@@ -14,85 +14,6 @@ export abstract class Expression {
   abstract hasVariable(name: string): boolean;
 }
 
-export class Constant extends Expression {
-  constructor(readonly value: RationalNumber) {
-    super();
-  }
-
-  replaceAndSimplify(): Expression {
-    return this;
-  }
-
-  multiply(factor: RationalNumber): Expression {
-    return new Constant(this.value.multiply(factor));
-  }
-
-  divideByVariableIfPossible(variableName: string): Expression | undefined {
-    return undefined;
-  }
-
-  eval(): RationalNumber {
-    return this.value;
-  }
-
-  findFirstVariable(): string | undefined {
-    return undefined;
-  }
-
-  hasVariable(name: string): boolean {
-    return false;
-  }
-
-  toString(): string {
-    return this.value.toString();
-  }
-}
-
-export class Variable extends Expression {
-  constructor(
-    readonly name: string,
-    readonly factor: RationalNumber = ONE
-  ) {
-    super();
-  }
-
-  replaceAndSimplify(replacements?: Map<string, Expression>): Expression {
-    const replacement = replacements?.get(this.name);
-    if (replacement) {
-      return new Product([new Constant(this.factor), replacement]).replaceAndSimplify(replacements);
-    }
-    return this;
-  }
-
-  multiply(factor: RationalNumber): Expression {
-    return new Variable(this.name, this.factor.multiply(factor));
-  }
-
-  divideByVariableIfPossible(variableName: string): Expression | undefined {
-    return variableName === this.name ? new Constant(this.factor) : undefined;
-  }
-
-  eval(variables: Map<string, RationalNumber>): RationalNumber {
-    const value = variables.get(this.name);
-    if (value === undefined) {
-      throw new Error("unknown variable: " + this.name);
-    }
-    return value.multiply(this.factor);
-  }
-
-  findFirstVariable(): string | undefined {
-    return this.name;
-  }
-
-  hasVariable(name: string): boolean {
-    return name === this.name;
-  }
-
-  toString(): string {
-    return this.factor.equals(ONE) ? this.name : "(" + this.factor + "*" + this.name + ")";
-  }
-}
-
 export class Sum extends Expression {
   constructor(readonly addends: Expression[]) {
     super();
@@ -105,30 +26,33 @@ export class Sum extends Expression {
     });
     let constant = ZERO;
     const otherExpressions: Expression[] = [];
-    const variablesMap = new Map<string, Variable>();
+    const variablesMap = new Map<string, RationalNumber>();
     for (const simplified of simplifiedAddends) {
-      if (simplified instanceof Constant) {
-        constant = constant.add(simplified.value);
-      } else if (simplified instanceof Variable) {
-        const name = simplified.name;
-        const existing = variablesMap.get(name);
-        variablesMap.set(
-          simplified.name,
-          existing ? new Variable(name, existing.factor.add(simplified.factor)) : simplified
-        );
+      if (simplified instanceof Product && simplified.isConstant()) {
+        constant = constant.add(simplified.constant);
+      } else if (
+        simplified instanceof Product &&
+        simplified.variables.length === 1 &&
+        !simplified.otherFactors.length
+      ) {
+        // TODO: also handle cases with multiple variables etc....
+        const name = simplified.variables[0];
+        variablesMap.set(name, (variablesMap.get(name) ?? ZERO).add(simplified.constant));
       } else {
         otherExpressions.push(simplified);
       }
     }
-    otherExpressions.push(...variablesMap.values());
+    for (const entry of variablesMap.entries()) {
+      otherExpressions.push(new Product(entry[1], [entry[0]], []));
+    }
 
     if (otherExpressions.length) {
       if (!constant.equals(ZERO)) {
-        otherExpressions.unshift(new Constant(constant));
+        otherExpressions.unshift(new Product(constant, [], []));
       }
       return otherExpressions.length === 1 ? otherExpressions[0] : new Sum(otherExpressions);
     } else {
-      return new Constant(constant);
+      return new Product(constant, [], []);
     }
   }
 
@@ -180,64 +104,106 @@ export class Sum extends Expression {
 }
 
 export class Product extends Expression {
-  constructor(readonly factors: Expression[]) {
+  constructor(
+    readonly constant: RationalNumber,
+    readonly variables: string[],
+    readonly otherFactors: Expression[]
+  ) {
     super();
   }
 
   replaceAndSimplify(replacements?: Map<string, Expression>): Expression {
-    const simplifiedFactors = this.factors.flatMap((factor) => {
-      const simplified = factor.replaceAndSimplify(replacements);
-      return simplified instanceof Product ? simplified.factors : [simplified];
-    });
-    let constant = ONE;
-    const otherExpressions: Expression[] = [];
-    for (const simplified of simplifiedFactors) {
-      if (simplified instanceof Constant) {
-        constant = constant.multiply(simplified.value);
+    let constant = this.constant;
+    const variables: string[] = [...this.variables];
+    const otherFactors: Expression[] = [];
+    for (const oldOtherFactor of this.otherFactors) {
+      const simplified = oldOtherFactor.replaceAndSimplify(replacements);
+      if (simplified instanceof Product) {
+        constant = constant.multiply(simplified.constant);
+        variables.push(...simplified.variables);
+        otherFactors.push(...simplified.otherFactors);
       } else {
-        otherExpressions.push(simplified);
+        otherFactors.push(simplified);
       }
     }
-
-    if (otherExpressions.length) {
-      const multiplied = otherExpressions.map((expression) => expression.multiply(constant));
-      return multiplied.length === 1 ? multiplied[0] : new Product(multiplied);
-    } else {
-      return new Constant(constant);
+    if (constant.isZero()) {
+      return new Product(ZERO, [], []);
     }
+    if (replacements && variables.length) {
+      const unreplacedVariables: string[] = [];
+      for (const variable of variables) {
+        const replacement = replacements.get(variable);
+        if (replacement) {
+          otherFactors.push(replacement);
+        } else {
+          unreplacedVariables.push(variable);
+        }
+      }
+      if (unreplacedVariables.length < variables.length) {
+        // call replaceAndSimplify() again
+        return new Product(constant, unreplacedVariables, otherFactors).replaceAndSimplify();
+      }
+    }
+    const sumIndex = otherFactors.findIndex((factor) => factor instanceof Sum);
+    if (sumIndex >= 0) {
+      // multiply with each addend of the sum
+      const sum = otherFactors[sumIndex] as Sum;
+      otherFactors.splice(sumIndex, 1);
+      return new Sum(
+        sum.addends.map((addend) => new Product(constant, variables, [addend, ...otherFactors]))
+      ).replaceAndSimplify();
+    }
+    return new Product(constant, variables.sort(), otherFactors);
   }
 
   divideByVariableIfPossible(variableName: string): Expression | undefined {
-    const newFactors: Expression[] = [...this.factors];
-    for (let i = 0; i < newFactors.length; i++) {
-      const newFactor = newFactors[i].divideByVariableIfPossible(variableName);
+    const index = this.variables.indexOf(variableName);
+    if (index >= 0) {
+      const remainingVariables = [...this.variables];
+      remainingVariables.splice(index, 1);
+      return new Product(this.constant, remainingVariables, this.otherFactors);
+    }
+    const otherFactors = this.otherFactors;
+    for (let i = 0; i < otherFactors.length; i++) {
+      const newFactor = otherFactors[i].divideByVariableIfPossible(variableName);
       if (newFactor) {
         // we only need to divide one factor
-        newFactors[i] = newFactor;
-        return new Product(newFactors);
+        const newOtherFactors: Expression[] = [...this.otherFactors];
+        newOtherFactors[i] = newFactor;
+        return new Product(this.constant, this.variables, newOtherFactors);
       }
     }
     return undefined;
   }
 
   multiply(factor: RationalNumber): Expression {
-    return new Product([new Constant(factor), ...this.factors]);
+    return new Product(this.constant.multiply(factor), this.variables, this.otherFactors);
   }
 
   eval(variables: Map<string, RationalNumber>): RationalNumber | undefined {
-    let result = ONE;
-    for (const factor of this.factors) {
+    let result = this.constant;
+    for (const variableName of this.variables) {
+      const value = variables.get(variableName);
+      if (value === undefined) {
+        throw new Error("unknown variable: " + variableName);
+      }
+      result = result.multiply(value);
+    }
+    for (const factor of this.otherFactors) {
       const value = factor.eval(variables);
       if (value === undefined) {
         return undefined;
       }
-      result.multiply(value);
+      result = result.multiply(value);
     }
     return result;
   }
 
   findFirstVariable(): string | undefined {
-    for (const factor of this.factors) {
+    if (this.variables.length) {
+      return this.variables[0];
+    }
+    for (const factor of this.otherFactors) {
       const result = factor.findFirstVariable();
       if (result !== undefined) {
         return result;
@@ -247,11 +213,31 @@ export class Product extends Expression {
   }
 
   hasVariable(name: string): boolean {
-    return this.factors.some((factor) => factor.hasVariable(name));
+    return this.variables.includes(name) || this.otherFactors.some((factor) => factor.hasVariable(name));
+  }
+
+  isConstant(): boolean {
+    return !this.variables.length && !this.otherFactors.length;
   }
 
   toString(): string {
-    return "(" + this.factors.map((factor) => factor.toString()).join(" * ") + ")";
+    const parts: string[] = [];
+    if (!this.constant.equals(ONE)) {
+      parts.push(this.constant.toString());
+    }
+    if (this.variables.length) {
+      parts.push(...this.variables);
+    }
+    for (const factor of this.otherFactors) {
+      parts.push(factor.toString());
+    }
+    if (!parts.length) {
+      return "1";
+    }
+    if (parts.length === 1) {
+      return parts[0];
+    }
+    return "(" + parts.join("*") + ")";
   }
 }
 
@@ -266,11 +252,12 @@ export class Fraction extends Expression {
   replaceAndSimplify(replacements?: Map<string, Expression>): Expression {
     const simplifiedNumerator = this.numerator.replaceAndSimplify(replacements);
     const simplifiedDenominator = this.denominator.replaceAndSimplify(replacements);
-    if (simplifiedDenominator instanceof Constant && !simplifiedDenominator.value.isZero()) {
-      return new Product([
-        new Constant(ONE.divide(simplifiedDenominator.value)),
-        simplifiedNumerator,
-      ]).replaceAndSimplify(replacements);
+    if (
+      simplifiedDenominator instanceof Product &&
+      !simplifiedDenominator.constant.isZero() &&
+      simplifiedDenominator.isConstant()
+    ) {
+      return simplifiedNumerator.multiply(ONE.divide(simplifiedDenominator.constant));
     }
 
     if (simplifiedNumerator instanceof Sum) {
@@ -323,11 +310,11 @@ function simpleToExpression(input: SimpleExpressionInput): Expression {
   if (input instanceof Expression) {
     return input;
   } else if (input instanceof RationalNumber) {
-    return new Constant(input);
+    return new Product(input, [], []);
   } else if (typeof input === "number") {
-    return new Constant(q(input));
+    return new Product(q(input), [], []);
   } else {
-    return new Variable(input);
+    return new Product(ONE, [input], []);
   }
 }
 
@@ -341,7 +328,7 @@ export function e(
       case "+":
         return new Sum(expressions);
       case "*":
-        return new Product(expressions);
+        return new Product(ONE, [], expressions);
       case "/":
         if (expressions.length !== 2) {
           throw new Error("invalid number of expressions");
@@ -364,7 +351,7 @@ export function e(
  */
 export function solveExpressionForVariable(expression: Expression, variableName: string): Expression | undefined {
   let left = expression.replaceAndSimplify();
-  let right: Expression = new Constant(ZERO);
+  let right: Expression = new Product(ZERO, [], []);
 
   if (!(left instanceof Sum)) {
     // build dummy sum for first iteration
@@ -386,25 +373,21 @@ export function solveExpressionForVariable(expression: Expression, variableName:
     }
 
     if (!leftParts.length) {
-      throw new Error("variable not found: " + variableName);
+      return undefined;
     }
 
     left = new Sum(leftParts).replaceAndSimplify();
     right = new Sum([right, ...rightParts]).replaceAndSimplify();
 
     if (left instanceof Product) {
-      const variableFactors: Variable[] = [];
-      const otherFactors: Expression[] = [];
-      for (const factor of left.factors) {
-        if (factor instanceof Variable && factor.name === variableName) {
-          variableFactors.push(factor);
-        } else {
-          otherFactors.push(factor);
+      const index = left.variables.indexOf(variableName);
+      if (index >= 0 && left.variables.indexOf(variableName, index + 1) < 0) {
+        const leftRest = left.divideByVariableIfPossible(variableName);
+        if (!leftRest) {
+          throw new Error("divideByVariableIfPossible() failed");
         }
-      }
-      if (variableFactors.length === 1) {
-        left = variableFactors[0];
-        right = new Fraction(right, new Product(otherFactors));
+        left = new Product(ONE, [variableName], []);
+        right = new Fraction(right, leftRest);
         progress = true;
       }
     }
