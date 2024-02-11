@@ -7,11 +7,30 @@ const MINUS_ONE = q(-1);
 export abstract class Expression {
   abstract eval(variables: Map<string, RationalNumber>): RationalNumber | undefined;
   abstract toString(): string;
-  abstract replaceAndSimplify(replacements?: Map<string, Expression>): Expression;
+  abstract toJsonTree(): unknown[];
+  toJsonString(): string {
+    return JSON.stringify(this.toJsonTree());
+  }
+  abstract replace(replacements: Map<string, Expression>): Expression;
+  abstract normalize(): Expression;
   abstract multiply(factor: RationalNumber): Expression;
   abstract divideByVariableIfPossible(variableName: string): Expression | undefined;
   abstract findFirstVariable(): string | undefined;
   abstract hasVariable(name: string): boolean;
+}
+
+function sortByJsonString(expressions: Expression[]): void {
+  if (expressions.length > 1) {
+    const jsonStrings = new Map<Expression, string>();
+    for (const expression of expressions) {
+      jsonStrings.set(expression, expression.toJsonString());
+    }
+    expressions.sort((a, b) => {
+      const aJson = jsonStrings.get(a)!;
+      const bJson = jsonStrings.get(b)!;
+      return aJson === bJson ? 0 : aJson < bJson ? -1 : 1;
+    });
+  }
 }
 
 export class Sum extends Expression {
@@ -19,27 +38,43 @@ export class Sum extends Expression {
     super();
   }
 
-  replaceAndSimplify(replacements?: Map<string, Expression>): Expression {
-    const simplifiedAddends = this.addends.flatMap((addend) => {
-      const simplified = addend.replaceAndSimplify(replacements);
-      return simplified instanceof Sum ? simplified.addends : [simplified];
+  toJsonTree(): unknown[] {
+    return ["+", ...this.addends.map((addend) => addend.toJsonTree())];
+  }
+
+  replace(replacements: Map<string, Expression>): Expression {
+    let anyChange = false;
+    const newAddends = this.addends.map((addend) => {
+      const newAddend = addend.replace(replacements);
+      if (newAddend !== addend) {
+        anyChange = true;
+      }
+      return newAddend;
+    });
+    return anyChange ? new Sum(newAddends) : this;
+  }
+
+  normalize(): Expression {
+    const normalizedAddends = this.addends.flatMap((addend) => {
+      const normalized = addend.normalize();
+      return normalized instanceof Sum ? normalized.addends : [normalized];
     });
     let constant = ZERO;
     const otherExpressions: Expression[] = [];
     const variablesMap = new Map<string, RationalNumber>();
-    for (const simplified of simplifiedAddends) {
-      if (simplified instanceof Product && simplified.isConstant()) {
-        constant = constant.add(simplified.constant);
+    for (const normalized of normalizedAddends) {
+      if (normalized instanceof Product && normalized.isConstant()) {
+        constant = constant.add(normalized.constant);
       } else if (
-        simplified instanceof Product &&
-        simplified.variables.length === 1 &&
-        !simplified.otherFactors.length
+        normalized instanceof Product &&
+        normalized.variables.length === 1 &&
+        !normalized.otherFactors.length
       ) {
         // TODO: also handle cases with multiple variables etc....
-        const name = simplified.variables[0];
-        variablesMap.set(name, (variablesMap.get(name) ?? ZERO).add(simplified.constant));
+        const name = normalized.variables[0];
+        variablesMap.set(name, (variablesMap.get(name) ?? ZERO).add(normalized.constant));
       } else {
-        otherExpressions.push(simplified);
+        otherExpressions.push(normalized);
       }
     }
     for (const entry of variablesMap.entries()) {
@@ -50,6 +85,7 @@ export class Sum extends Expression {
       if (!constant.equals(ZERO)) {
         otherExpressions.unshift(new Product(constant, [], []));
       }
+      sortByJsonString(otherExpressions);
       return otherExpressions.length === 1 ? otherExpressions[0] : new Sum(otherExpressions);
     } else {
       return new Product(constant, [], []);
@@ -112,37 +148,56 @@ export class Product extends Expression {
     super();
   }
 
-  replaceAndSimplify(replacements?: Map<string, Expression>): Expression {
+  toJsonTree(): unknown[] {
+    return [
+      "*",
+      this.constant.toString(),
+      ...this.variables,
+      ...this.otherFactors.map((factor) => factor.toJsonTree()),
+    ];
+  }
+
+  replace(replacements: Map<string, Expression>): Expression {
+    let anyChange = false;
+
+    const newOtherFactors: Expression[] = this.otherFactors.map((factor) => {
+      const newFactor = factor.replace(replacements);
+      if (newFactor !== factor) {
+        anyChange = true;
+      }
+      return newFactor;
+    });
+
+    const newVariables: string[] = [];
+    for (const variable of this.variables) {
+      const replacement = replacements.get(variable);
+      if (replacement) {
+        newOtherFactors.push(replacement);
+        anyChange = true;
+      } else {
+        newVariables.push(variable);
+      }
+    }
+
+    return anyChange ? new Product(this.constant, newVariables, newOtherFactors) : this;
+  }
+
+  normalize(): Expression {
     let constant = this.constant;
     const variables: string[] = [...this.variables];
     const otherFactors: Expression[] = [];
     for (const oldOtherFactor of this.otherFactors) {
-      const simplified = oldOtherFactor.replaceAndSimplify(replacements);
-      if (simplified instanceof Product) {
-        constant = constant.multiply(simplified.constant);
-        variables.push(...simplified.variables);
-        otherFactors.push(...simplified.otherFactors);
+      const normalized = oldOtherFactor.normalize();
+      if (normalized instanceof Product) {
+        constant = constant.multiply(normalized.constant);
+        variables.push(...normalized.variables);
+        otherFactors.push(...normalized.otherFactors);
       } else {
-        otherFactors.push(simplified);
+        otherFactors.push(normalized);
       }
     }
     if (constant.isZero()) {
       return new Product(ZERO, [], []);
-    }
-    if (replacements && variables.length) {
-      const unreplacedVariables: string[] = [];
-      for (const variable of variables) {
-        const replacement = replacements.get(variable);
-        if (replacement) {
-          otherFactors.push(replacement);
-        } else {
-          unreplacedVariables.push(variable);
-        }
-      }
-      if (unreplacedVariables.length < variables.length) {
-        // call replaceAndSimplify() again
-        return new Product(constant, unreplacedVariables, otherFactors).replaceAndSimplify();
-      }
     }
     const sumIndex = otherFactors.findIndex((factor) => factor instanceof Sum);
     if (sumIndex >= 0) {
@@ -151,8 +206,9 @@ export class Product extends Expression {
       otherFactors.splice(sumIndex, 1);
       return new Sum(
         sum.addends.map((addend) => new Product(constant, variables, [addend, ...otherFactors]))
-      ).replaceAndSimplify();
+      ).normalize();
     }
+    sortByJsonString(otherFactors);
     return new Product(constant, variables.sort(), otherFactors);
   }
 
@@ -249,25 +305,44 @@ export class Fraction extends Expression {
     super();
   }
 
-  replaceAndSimplify(replacements?: Map<string, Expression>): Expression {
-    const simplifiedNumerator = this.numerator.replaceAndSimplify(replacements);
-    const simplifiedDenominator = this.denominator.replaceAndSimplify(replacements);
+  toJsonTree(): unknown[] {
+    return ["/", this.numerator.toJsonTree(), this.denominator.toJsonTree()];
+  }
+
+  replace(replacements: Map<string, Expression>): Expression {
+    const newNumerator = this.numerator.replace(replacements);
+    const newDenominator = this.denominator.replace(replacements);
+    return newNumerator !== this.numerator || newDenominator !== this.denominator
+      ? new Fraction(newNumerator, newDenominator)
+      : this;
+  }
+
+  normalize(): Expression {
+    const normalizedNumerator = this.numerator.normalize();
+    const normalizedDenominator = this.denominator.normalize();
     if (
-      simplifiedDenominator instanceof Product &&
-      !simplifiedDenominator.constant.isZero() &&
-      simplifiedDenominator.isConstant()
+      normalizedDenominator instanceof Product &&
+      !normalizedDenominator.constant.isZero() &&
+      normalizedDenominator.isConstant()
     ) {
-      return simplifiedNumerator.multiply(ONE.divide(simplifiedDenominator.constant));
+      return normalizedNumerator.multiply(ONE.divide(normalizedDenominator.constant));
     }
 
-    if (simplifiedNumerator instanceof Sum) {
+    if (normalizedDenominator instanceof Fraction) {
+      return new Fraction(
+        new Product(ONE, [], [normalizedNumerator, normalizedDenominator.denominator]),
+        normalizedDenominator.numerator
+      ).normalize();
+    }
+
+    if (normalizedNumerator instanceof Sum) {
       // convert to sum of fractions
-      return new Sum(simplifiedNumerator.addends.map((addend) => new Fraction(addend, simplifiedDenominator)));
+      return new Sum(normalizedNumerator.addends.map((addend) => new Fraction(addend, normalizedDenominator)));
     }
 
     // TODO: more simplifications...
 
-    return new Fraction(simplifiedNumerator, simplifiedDenominator);
+    return new Fraction(normalizedNumerator, normalizedDenominator);
   }
 
   multiply(factor: RationalNumber): Expression {
@@ -350,7 +425,7 @@ export function e(
  * Transpose the expression to an expression that equals the given variable if the given expression equals zero.
  */
 export function solveExpressionForVariable(expression: Expression, variableName: string): Expression | undefined {
-  let left = expression.replaceAndSimplify();
+  let left = expression.normalize();
   let right: Expression = new Product(ZERO, [], []);
 
   if (!(left instanceof Sum)) {
@@ -376,8 +451,8 @@ export function solveExpressionForVariable(expression: Expression, variableName:
       return undefined;
     }
 
-    left = new Sum(leftParts).replaceAndSimplify();
-    right = new Sum([right, ...rightParts]).replaceAndSimplify();
+    left = new Sum(leftParts).normalize();
+    right = new Sum([right, ...rightParts]).normalize();
 
     if (left instanceof Product) {
       const index = left.variables.indexOf(variableName);
@@ -394,7 +469,7 @@ export function solveExpressionForVariable(expression: Expression, variableName:
 
     const leftRemainder = left.divideByVariableIfPossible(variableName);
     if (leftRemainder) {
-      return new Fraction(right, leftRemainder).replaceAndSimplify();
+      return new Fraction(right, leftRemainder).normalize();
     }
 
     if (!progress) {
@@ -413,7 +488,7 @@ export function findSolution(expressions: Expression[]): Map<string, RationalNum
   let replacements = new Map<string, Expression>();
   const remaining = [...expressions];
   while (remaining.length) {
-    const current = remaining.shift()!.replaceAndSimplify(replacements);
+    const current = remaining.shift()!.replace(replacements).normalize();
     const variableName = current.findFirstVariable();
     if (variableName === undefined) {
       const value = current.eval(result);
@@ -432,7 +507,7 @@ export function findSolution(expressions: Expression[]): Map<string, RationalNum
 
       // update all other replacements
       replacements = new Map(
-        [...replacements.entries()].map((entry) => [entry[0], entry[1].replaceAndSimplify(replacements)])
+        [...replacements.entries()].map((entry) => [entry[0], entry[1].replace(replacements).normalize()])
       );
     }
   }
